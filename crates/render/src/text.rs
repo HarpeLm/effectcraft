@@ -479,6 +479,8 @@ pub struct PlacedGlyph {
     pub fill: [f32; 4],
     pub stroke: [f32; 4],
     pub stroke_width: f64,
+    /// How the corners of the stroke are joined (the document's Line Join).
+    pub line_join: effectcraft_path::Join,
     /// The character's style fills it (Character panel fill on).
     pub apply_fill: bool,
     /// Index of the character in the text.
@@ -486,6 +488,15 @@ pub struct PlacedGlyph {
     /// Where the pivot sits in the unanimated layout (layer space): `m · (p − rest)` carries a
     /// point of the static layout to where the animation puts this character.
     pub rest: [f64; 2],
+}
+
+/// The renderer's join for a document's Line Join.
+pub fn path_join(j: effectcraft_keyframe::LineJoin) -> effectcraft_path::Join {
+    match j {
+        effectcraft_keyframe::LineJoin::Miter => effectcraft_path::Join::Miter,
+        effectcraft_keyframe::LineJoin::Round => effectcraft_path::Join::Round,
+        effectcraft_keyframe::LineJoin::Bevel => effectcraft_path::Join::Bevel,
+    }
 }
 
 impl PlacedGlyph {
@@ -777,6 +788,7 @@ pub fn text_geom(ctx: &EvalCtx, layer: &Layer) -> Option<TextGeom> {
             fill,
             stroke,
             stroke_width: (base_stroke_w + x.stroke_width).max(0.0),
+            line_join: path_join(doc.line_join),
             apply_fill: st.apply_fill,
             char_index: g.char_index,
             rest,
@@ -833,7 +845,7 @@ fn raster_pass(g: &PlacedGlyph, stroke: bool, paths: &[BezPath], m: &Mat3, rect:
     let (w, h) = ((rect[2] - rect[0]) as u32, (rect[3] - rect[1]) as u32);
     let mm = Mat3::translate(vec2(-rect[0] as f64, -rect[1] as f64)) * *m;
     let cov = if stroke {
-        let st = StrokeStyle { width: g.stroke_width, join: effectcraft_path::Join::Round, ..Default::default() };
+        let st = StrokeStyle { width: g.stroke_width, join: g.line_join, ..Default::default() };
         effectcraft_path::stroke_coverage(paths, &st, &mm, w, h)
     } else {
         effectcraft_path::fill_coverage(paths, &mm, w, h, FillRule::NonZero)
