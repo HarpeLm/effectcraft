@@ -596,3 +596,36 @@ fn stroke_line_join_changes_the_corners() {
     assert!(miter > round, "miter {miter} should cover more than round {round}");
     assert!(round > bevel, "round {round} should cover more than bevel {bevel}");
 }
+
+#[test]
+fn miter_tips_are_not_clipped_by_the_glyph_patch() {
+    // A synthetic glyph (no font needed): a sharp triangle, 30° at its apex. With a 10 px Miter
+    // stroke the tip reaches 5 / sin 15° ≈ 19 px above the apex, past one stroke width (10 px);
+    // the patch it is drawn into must reach that far, or the tip is cut flat.
+    let mut tri = BezPath::new();
+    tri.move_to((100.0, 50.0));
+    tri.line_to((100.0 + 100.0 * 15f64.to_radians().tan(), 150.0));
+    tri.line_to((100.0 - 100.0 * 15f64.to_radians().tan(), 150.0));
+    tri.close_path();
+    let glyph = |join| PlacedGlyph {
+        local: tri.clone(),
+        m: Mat4::IDENTITY,
+        xf: CharXf::default(),
+        fill: [0.0; 4],
+        stroke: [1.0; 4],
+        stroke_width: 10.0,
+        line_join: join,
+        apply_fill: false,
+        char_index: 0,
+        rest: [0.0; 2],
+    };
+    let tip_alpha = |join| {
+        let geom = TextGeom { doc: TextDoc::default(), glyphs: vec![glyph(join)], fill_stroke: 0, blend: BlendMode::Normal };
+        let mut img = crate::Image::new(200, 200);
+        draw_glyphs(&geom, &mut img, &Mat3::IDENTITY, 1.0, None);
+        // 15 px above the apex: inside the miter tip, beyond one stroke width (+ 2 px).
+        img.data[35 * 200 + 100][3]
+    };
+    assert!(tip_alpha(effectcraft_path::Join::Miter) > 0.5, "the miter tip is clipped");
+    assert_eq!(tip_alpha(effectcraft_path::Join::Bevel), 0.0, "a bevel join has no tip there");
+}

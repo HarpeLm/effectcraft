@@ -500,6 +500,12 @@ pub fn path_join(j: effectcraft_keyframe::LineJoin) -> effectcraft_path::Join {
 }
 
 impl PlacedGlyph {
+    /// How far the stroke can reach past the outline: half the width, times the miter limit
+    /// where Miter joins can make tips (at least the full width, as before Line Join existed).
+    pub fn stroke_reach(&self) -> f64 {
+        let k = if self.line_join == effectcraft_path::Join::Miter { (StrokeStyle::default().miter * 0.5).max(1.0) } else { 1.0 };
+        self.stroke_width * k
+    }
     /// Character space → layer space, flattened to 2D (ignores Z).
     pub fn m2(&self) -> Mat3 {
         let m = &self.m.0;
@@ -939,7 +945,7 @@ fn draw_glyphs(geom: &TextGeom, img: &mut Image, to_px: &Mat3, s: f64, only: Opt
         };
         let Some(b) = effectcraft_path::bounds(&paths) else { continue };
         let blur = [g.xf.blur[0] * s, g.xf.blur[1] * s];
-        let pad = g.stroke_width * m.mean_scale() + 2.0 + blur[0].max(blur[1]) * 1.5;
+        let pad = g.stroke_reach() * m.mean_scale() + 2.0 + blur[0].max(blur[1]) * 1.5;
         let r = m.map_rect(&effectcraft_geom::Rect::new(b.x0, b.y0, b.x1, b.y1));
         let rect = [
             ((r.x0 - pad).floor() as i64).max(0),
@@ -962,7 +968,7 @@ pub fn render(ctx: &EvalCtx, layer: &Layer, s: f64) -> Buf {
     let mut bounds: Option<kurbo::Rect> = None;
     for g in &geom.glyphs {
         if let Some(b) = effectcraft_path::bounds(&[g.path()]) {
-            let pad = g.stroke_width + 2.0 + g.xf.blur[0].max(g.xf.blur[1]) * 1.5;
+            let pad = g.stroke_reach() + 2.0 + g.xf.blur[0].max(g.xf.blur[1]) * 1.5;
             let b = b.inflate(pad, pad);
             bounds = Some(bounds.map_or(b, |a| a.union(b)));
         }
@@ -988,7 +994,7 @@ pub fn per_char_planes(ctx: &EvalCtx, layer: &Layer, s: f64) -> Vec<(Buf, Mat4)>
             continue;
         }
         let Some(b) = effectcraft_path::bounds(std::slice::from_ref(&g.local)) else { continue };
-        let pad = g.stroke_width + 2.0 + g.xf.blur[0].max(g.xf.blur[1]) * 1.5;
+        let pad = g.stroke_reach() + 2.0 + g.xf.blur[0].max(g.xf.blur[1]) * 1.5;
         let b = b.inflate(pad, pad);
         let w = ((b.width() * s).ceil() as u32 + 4).clamp(1, 4096);
         let h = ((b.height() * s).ceil() as u32 + 4).clamp(1, 4096);
